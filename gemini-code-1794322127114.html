@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Frostbite Sector: Thermal Generator</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --panel: #151a21;
+      --panel-border: #26303d;
+      --text: #d8e2ec;
+      --text-muted: #748398;
+      --danger: #ff5370;
+      --warning: #ffcb6b;
+      --cold: #82aaff;
+      --heat: #f78c6c;
+      --success: #c3e88d;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Consolas', 'Courier New', monospace;
+      padding: 1rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .outpost-container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* Weather Alert Banner */
+    .alert-banner {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      padding: 0.8rem 1.2rem;
+      border-radius: 4px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+    }
+    .alert-banner.snap {
+      border-color: var(--cold);
+      background: rgba(130, 170, 255, 0.1);
+      color: var(--cold);
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    /* Core Status Dashboard */
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      padding: 1rem;
+      border-radius: 4px;
+    }
+    .card h3 {
+      margin: 0 0 0.5rem 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .metric {
+      font-size: 1.6rem;
+      font-weight: bold;
+    }
+    .subtext {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+
+    /* Thermal Visualizer */
+    .heat-bar-wrap {
+      background: #080a0d;
+      border: 1px solid var(--panel-border);
+      height: 12px;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .heat-bar-fill {
+      height: 100%;
+      width: 50%;
+      background: var(--heat);
+      transition: width 0.2s ease, background-color 0.2s ease;
+    }
+
+    /* Manual Actions */
+    .actions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+    }
+    button {
+      background: #1f2732;
+      color: var(--text);
+      border: 1px solid var(--panel-border);
+      padding: 0.7rem 0.5rem;
+      font-family: inherit;
+      cursor: pointer;
+      border-radius: 3px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      transition: all 0.1s ease;
+    }
+    button:hover:not(:disabled) {
+      background: #2a3545;
+      border-color: var(--text-muted);
+    }
+    button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Sector Rings */
+    .rings-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.8rem;
+    }
+    .sector-ring {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-left: 4px solid var(--panel-border);
+      padding: 1rem;
+      border-radius: 2px;
+      transition: border-color 0.3s ease;
+    }
+    .sector-ring.operational {
+      border-left-color: var(--success);
+    }
+    .sector-ring.frozen {
+      border-left-color: var(--cold);
+      opacity: 0.6;
+      background: rgba(130, 170, 255, 0.03);
+    }
+    .ring-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.8rem;
+      font-size: 0.9rem;
+    }
+    .ring-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .log {
+      background: #080a0d;
+      border: 1px solid var(--panel-border);
+      height: 120px;
+      overflow-y: auto;
+      padding: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    .log-entry { margin-bottom: 3px; }
+    .log-warn { color: var(--warning); }
+    .log-danger { color: var(--danger); }
+    .log-snap { color: var(--cold); }
+
+    @keyframes pulse {
+      0% { opacity: 0.8; }
+      50% { opacity: 1; }
+      100% { opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="outpost-container">
+  
+  <div id="alert-banner" class="alert-banner">
+    <span id="weather-status">Ambient Cold: Standard (-25°C)</span>
+    <span id="cold-timer">Next Blizzard in: 60s</span>
+  </div>
+
+  <div class="dashboard">
+    <div class="card">
+      <h3>Thermal Core</h3>
+      <div class="metric" id="heat-temp">45.0°C</div>
+      <div class="subtext" id="heat-burn-rate">Fuel burn: 1.0 Wood/s</div>
+      <div class="heat-bar-wrap">
+        <div id="heat-bar" class="heat-bar-fill"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Stockpiles</h3>
+      <div class="metric"><span id="wood-val">50</span> <small style="font-size: 0.9rem; color: var(--text-muted);">Wood</small></div>
+      <div class="subtext"><span id="ration-val">20</span> Rations | <span id="scrap-val">0</span> Scrap</div>
+    </div>
+
+    <div class="card">
+      <h3>Expedition Personnel</h3>
+      <div class="metric"><span id="pop-val">4</span> / <span id="max-pop-val">4</span></div>
+      <div class="subtext" id="food-drain">Rations: -0.4/s</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Manual Emergency Dispatch</h3>
+    <div class="actions-grid">
+      <button onclick="manualScavenge('wood')">Chop Timber (+2 Wood)</button>
+      <button onclick="manualScavenge('food')">Forage Ice (+1 Ration)</button>
+      <button onclick="manualScavenge('scrap')">Dredge Scrap (+1 Scrap)</button>
+      <button onclick="stokeCore()">Stoke Core (-5 Wood, +15°C)</button>
+    </div>
+  </div>
+
+  <div class="rings-grid">
+    <!-- Ring 1 -->
+    <div class="sector-ring" id="ring-1">
+      <div class="ring-header">
+        <strong>Ring 1: Inner Crucible (Requires ≥ 15°C Core)</strong>
+        <span id="ring-1-status" style="color: var(--success);">Operational</span>
+      </div>
+      <div class="ring-controls">
+        <span>Sawmill: <b id="workers-sawmill">0</b> Workers (+1.2 Wood/s ea)</span>
+        <button onclick="assignWorker('sawmill', 1)">+ Assign</button>
+        <button onclick="assignWorker('sawmill', -1)">- Remove</button>
+      </div>
+    </div>
+
+    <!-- Ring 2 -->
+    <div class="sector-ring" id="ring-2">
+      <div class="ring-header">
+        <strong>Ring 2: Thermal Perimeter (Requires ≥ 40°C Core)</strong>
+        <span id="ring-2-status" style="color: var(--cold);">FROZEN</span>
+      </div>
+      <div class="ring-controls">
+        <span>Hydroponic Vat: <b id="workers-hydro">0</b> Workers (+0.5 Rations/s ea)</span>
+        <button onclick="assignWorker('hydro', 1)">+ Assign</button>
+        <button onclick="assignWorker('hydro', -1)">- Remove</button>
+      </div>
+    </div>
+
+    <!-- Ring 3 -->
+    <div class="sector-ring" id="ring-3">
+      <div class="ring-header">
+        <strong>Ring 3: Outer Wastes (Requires ≥ 75°C Core)</strong>
+        <span id="ring-3-status" style="color: var(--cold);">FROZEN</span>
+      </div>
+      <div class="ring-controls">
+        <span>Scrap Drill: <b id="workers-drill">0</b> Workers (+0.3 Scrap/s ea)</span>
+        <button onclick="assignWorker('drill', 1)">+ Assign</button>
+        <button onclick="assignWorker('drill', -1)">- Remove</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="log" id="system-log">
+    <div class="log-entry">Thermal Generator initialized. Core combustion holding.</div>
+  </div>
+
+  <div style="display:flex; justify-content: flex-end; gap: 0.5rem;">
+    <button onclick="manualSave()" style="font-size:0.75rem;">Save State</button>
+    <button onclick="wipeSave()" style="font-size:0.75rem; color: var(--danger);">Abandon Outpost</button>
+  </div>
+</div>
+
+<script>
+const defaultState = {
+  wood: 40,
+  rations: 20,
+  scrap: 0,
+  temperature: 50.0, // Core Temp in °C
+  baseCoolingRate: 1.5, // Temp lost per sec
+  population: 4,
+  maxPopulation: 4,
+  workers: {
+    sawmill: 1,
+    hydro: 1,
+    drill: 0
+  },
+  weather: {
+    isSnap: false,
+    timer: 60, // Seconds until next event/shift
+  },
+  lastUpdate: Date.now()
+};
+
+let state = { ...defaultState };
+
+// Thresholds for core heat to sustain rings
+const RING_THRESHOLDS = {
+  1: 15,
+  2: 40,
+  3: 75
+};
+
+function log(msg, type = "") {
+  const logEl = document.getElementById("system-log");
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${type}`;
+  entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(entry);
+}
+
+function manualScavenge(res) {
+  if (res === 'wood') state.wood += 2;
+  if (res === 'food') state.rations += 1;
+  if (res === 'scrap') state.scrap += 1;
+  updateUI();
+}
+
+function stokeCore() {
+  if (state.wood >= 5) {
+    state.wood -= 5;
+    state.temperature = Math.min(100, state.temperature + 15);
+    log("Stoked the core with 5 timber. Heat surging.", "log-warn");
+    updateUI();
+  }
+}
+
+function assignWorker(job, delta) {
+  const currentAssigned = Object.values(state.workers).reduce((a, b) => a + b, 0);
+  if (delta > 0 && currentAssigned < state.population) {
+    state.workers[job] += 1;
+  } else if (delta < 0 && state.workers[job] > 0) {
+    state.workers[job] -= 1;
+  }
+  updateUI();
+}
+
+// Tick Simulation: Run for both active frames and offline catchup
+function runTick(delta) {
+  // 1. Weather Events
+  state.weather.timer -= delta;
+  if (state.weather.timer <= 0) {
+    state.weather.isSnap = !state.weather.isSnap;
+    state.weather.timer = state.weather.isSnap ? 30 : 60; // 30s storm, 60s normal
+    if (state.weather.isSnap) {
+      log("COLD SNAP HIT: Temperature loss tripled! Outer rings collapsing!", "log-snap");
+    } else {
+      log("Blizzard passed. Ambient air returning to baseline.", "");
+    }
+  }
+
+  // 2. Core Thermal Dynamics
+  const snapMultiplier = state.weather.isSnap ? 3.0 : 1.0;
+  const cooling = state.baseCoolingRate * snapMultiplier * delta;
+  
+  // Fuel Burn: The core consumes wood automatically to prevent complete freeze if available
+  const fuelBurn = 0.8 * delta;
+  if (state.wood >= fuelBurn) {
+    state.wood -= fuelBurn;
+    // Holding heat
+    state.temperature = Math.max(0, Math.min(100, state.temperature - (cooling * 0.4)));
+  } else {
+    // Unchecked cooling without wood
+    state.temperature = Math.max(0, state.temperature - cooling);
+  }
+
+  // 3. Ring Status Checks
+  const ring1Active = state.temperature >= RING_THRESHOLDS[1];
+  const ring2Active = state.temperature >= RING_THRESHOLDS[2];
+  const ring3Active = state.temperature >= RING_THRESHOLDS[3];
+
+  // 4. Production from un-frozen rings
+  if (ring1Active) {
+    state.wood += state.workers.sawmill * 1.2 * delta;
+  }
+  if (ring2Active) {
+    state.rations += state.workers.hydro * 0.5 * delta;
+  }
+  if (ring3Active) {
+    state.scrap += state.workers.drill * 0.3 * delta;
+  }
+
+  // 5. Consumption & Survival
+  const foodBurn = state.population * 0.1 * delta;
+  state.rations -= foodBurn;
+
+  // Starvation Check
+  if (state.rations < 0) {
+    state.rations = 0;
+    if (state.population > 0 && Math.random() < 0.05 * delta) {
+      state.population--;
+      // Rebalance workers
+      for (let k in state.workers) {
+        if (state.workers[k] > 0) {
+          state.workers[k]--;
+          break;
+        }
+      }
+      log("A survivor succumbed to starvation.", "log-danger");
+    }
+  }
+
+  // Total Freeze Wipeout Check
+  if (state.temperature <= 0 && state.population > 0) {
+    if (Math.random() < 0.1 * delta) {
+      state.population--;
+      log("A survivor froze to death inside the sleeping quarters.", "log-danger");
+    }
+  }
+}
+
+function updateUI() {
+  document.getElementById("heat-temp").textContent = `${state.temperature.toFixed(1)}°C`;
+  document.getElementById("wood-val").textContent = Math.floor(state.wood);
+  document.getElementById("ration-val").textContent = Math.floor(state.rations);
+  document.getElementById("scrap-val").textContent = Math.floor(state.scrap);
+  document.getElementById("pop-val").textContent = state.population;
+  document.getElementById("max-pop-val").textContent = state.maxPopulation;
+
+  // Thermal Bar
+  const heatBar = document.getElementById("heat-bar");
+  heatBar.style.width = `${state.temperature}%`;
+  heatBar.style.backgroundColor = state.temperature < 20 ? 'var(--cold)' : 'var(--heat)';
+
+  // Rations Drain Text
+  document.getElementById("food-drain").textContent = `Rations: -${(state.population * 0.1).toFixed(1)}/s`;
+
+  // Ring States
+  updateRingUI(1, state.temperature >= RING_THRESHOLDS[1]);
+  updateRingUI(2, state.temperature >= RING_THRESHOLDS[2]);
+  updateRingUI(3, state.temperature >= RING_THRESHOLDS[3]);
+
+  // Worker Counters
+  document.getElementById("workers-sawmill").textContent = state.workers.sawmill;
+  document.getElementById("workers-hydro").textContent = state.workers.hydro;
+  document.getElementById("workers-drill").textContent = state.workers.drill;
+
+  // Weather Banner
+  const banner = document.getElementById("alert-banner");
+  const weatherText = document.getElementById("weather-status");
+  const timerText = document.getElementById("cold-timer");
+
+  if (state.weather.isSnap) {
+    banner.className = "alert-banner snap";
+    weatherText.textContent = "CRITICAL: Polar Vortex Active (-65°C)";
+    timerText.textContent = `Thaw in: ${Math.ceil(state.weather.timer)}s`;
+  } else {
+    banner.className = "alert-banner";
+    weatherText.textContent = "Ambient Cold: Clear Skies (-25°C)";
+    timerText.textContent = `Next Cold Snap in: ${Math.ceil(state.weather.timer)}s`;
+  }
+}
+
+function updateRingUI(ringNum, active) {
+  const el = document.getElementById(`ring-${ringNum}`);
+  const status = document.getElementById(`ring-${ringNum}-status`);
+  if (active) {
+    el.className = "sector-ring operational";
+    status.textContent = "Operational";
+    status.style.color = "var(--success)";
+  } else {
+    el.className = "sector-ring frozen";
+    status.textContent = "FROZEN";
+    status.style.color = "var(--cold)";
+  }
+}
+
+// Persistence
+function manualSave() {
+  state.lastUpdate = Date.now();
+  localStorage.setItem("frostbite_save", JSON.stringify(state));
+  log("Outpost status recorded to long-term memory.", "");
+}
+
+function loadGame() {
+  const raw = localStorage.getItem("frostbite_save");
+  if (raw) {
+    try {
+      const loaded = JSON.parse(raw);
+      state = { ...defaultState, ...loaded };
+      
+      // Sequential Offline Catchup
+      const now = Date.now();
+      let delta = Math.max(0, (now - state.lastUpdate) / 1000);
+      
+      // Cap catchup simulation to 8 hours to prevent browser lockup
+      delta = Math.min(delta, 28800); 
+
+      // Run catchup in 1-second chunks
+      const steps = Math.floor(delta);
+      for (let i = 0; i < steps; i++) {
+        runTick(1);
+        if (state.population <= 0) break;
+      }
+      log(`Simulated ${steps}s of harsh offline survival.`, "log-warn");
+    } catch (e) {
+      console.error(e);
+    }
+  }
+}
+
+function wipeSave() {
+  if (confirm("Evacuate outpost? All structure and progress will be permanently abandoned.")) {
+    localStorage.removeItem("frostbite_save");
+    state = { ...defaultState, lastUpdate: Date.now() };
+    log("Sector abandoned. Core reignited for fresh expedition.", "log-danger");
+    updateUI();
+  }
+}
+
+// Game Loop
+let lastFrame = Date.now();
+setInterval(() => {
+  const now = Date.now();
+  const delta = (now - lastFrame) / 1000;
+  lastFrame = now;
+
+  runTick(delta);
+  updateUI();
+}, 100);
+
+// Auto-save every 15s
+setInterval(manualSave, 15000);
+
+loadGame();
+updateUI();
+</script>
+</body>
+</html>
